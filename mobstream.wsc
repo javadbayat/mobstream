@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<?component error="true" debug="false"?>
+<component id="mobStream">
+    <registration 
+        progid="ADODB.MOBStream"
+        classid="{F2EEC5C2-4723-4719-9486-A377EB5C389C}"
+        description="Magical Output Binary Stream (MOBS) Library"
+        version="1"
+    />
+    
+    <public>
+        <method name="Init">
+            <parameter name="seedPath" />
+        </method>
+        <method name="Open">
+            <parameter name="filePath" />
+        </method>
+        <method name="Write">
+            <parameter name="data" />
+        </method>
+        <method name="Close" />
+        
+        <property name="Size" get />
+        <property name="Info" get dispid="0" />
+        <property name="Version" get />
+    </public>
+    
+    <script language="jscript">
+        <![CDATA[
+        var g_stream = new ActiveXObject("ADODB.Stream");
+        var g_byteValueMap = new ActiveXObject("Scripting.Dictionary");
+        var g_currentFilePath = "";
+        
+        function Init(seedPath) {
+            if (!seedPath)
+                seedPath = "mobstream-seed";
+            
+            if (g_byteValueMap.Count)
+                throw new Error("MOBStream.Init: The library has already been initialized");
+            
+            var seedStream = new ActiveXObject("ADODB.Stream");
+            seedStream.Open();
+            seedStream.Type = 1;
+            seedStream.LoadFromFile(seedPath);
+            
+            for (var b = 0; b < 256; b++)
+                g_byteValueMap(b) = seedStream.Read(1);
+            
+            seedStream.Close();
+        }
+        
+        function Open(filePath) {
+            if (!filePath)
+                throw new Error("MOBStream.Open: Not enough arguments");
+            
+            if (!g_byteValueMap.Count)
+                throw new Error("MOBStream.Open: The library has not yet been initialized");
+            
+            if (g_currentFilePath)
+                throw new Error("MOBStream.Open: An open file is currently held");
+            
+            g_stream.Open();
+            g_stream.Type = 1;
+            g_currentFilePath = filePath;
+        }
+        
+        function Write(data) {
+            if (!data)
+                throw new Error("MOBStream.Write: Not enough arguments");
+            
+            if (!g_currentFilePath)
+                throw new Error("MOBStream.Write: There is currently no open file to write into");
+            
+            for (var e = new Enumerator(data); !e.atEnd(); e.moveNext())
+                g_stream.Write(g_byteValueMap(e.item()));
+        }
+        
+        function Close() {
+            if (!g_currentFilePath)
+                throw new Error("MOBStream.Close: There is currently no open file to close");
+            
+            g_stream.SaveToFile(g_currentFilePath);
+            g_stream.Close();
+            g_currentFilePath = "";
+        }
+        
+        function get_Size() {
+            return g_stream.Size;
+        }
+        
+        function get_Info() {
+            return "Magical Output Binary Stream (MOBS) Library\r\n" +
+                    "Based on ActiveX Data Objects (ADO) Library";
+        }
+        
+        function get_Version() {
+            return "1.0";
+        }
+        ]]>
+    </script>
+</component>
