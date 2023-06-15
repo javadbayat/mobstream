@@ -31,6 +31,8 @@
         var g_byteValueMap = new ActiveXObject("Scripting.Dictionary");
         var g_currentFilePath = "";
         
+        var adTypeBinary = 1;
+        
         function Init(seedPath) {
             if (!seedPath)
                 seedPath = "mobstream-seed";
@@ -40,7 +42,7 @@
             
             var seedStream = new ActiveXObject("ADODB.Stream");
             seedStream.Open();
-            seedStream.Type = 1;
+            seedStream.Type = adTypeBinary;
             seedStream.LoadFromFile(seedPath);
             
             for (var b = 0; b < 256; b++)
@@ -60,7 +62,7 @@
                 throw new Error("MOBStream.Open: An open file is currently held");
             
             g_stream.Open();
-            g_stream.Type = 1;
+            g_stream.Type = adTypeBinary;
             g_currentFilePath = filePath;
         }
         
