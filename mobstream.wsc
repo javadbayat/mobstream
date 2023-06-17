@@ -11,6 +11,7 @@
     <public>
         <method name="Init">
             <parameter name="seedPath" />
+            <parameter name="seedOffset" />
         </method>
         <method name="Open">
             <parameter name="filePath" />
@@ -27,30 +28,97 @@
     
     <script language="jscript">
         <![CDATA[
+        // The underlying ADODB.Stream object that is used to write
+        // binary data to the files that the user has requested.
         var g_stream = new ActiveXObject("ADODB.Stream");
+        
+        // The Byte Value Map (BVM), which is a Dictionary object
+        // that maps each number in the range 0 to 255 to a safearray
+        // of type VT_UI1 containing the number as a single element.
+        // During a write operation, the user requests that a sequence
+        // of bytes be written into the stream; so the BVM is queried
+        // for each of the bytes in the requested sequence, in order
+        // to obtain the corresponding single-element safearray. Then
+        // that safearray will be passed to g_stream.Write method, in
+        // order to write the requested byte into the underlying stream.
         var g_byteValueMap = new ActiveXObject("Scripting.Dictionary");
+        
+        // The current file path. Whenever the Open method is called,
+        // being passed the path of a file that is to be created, then
+        // the given file path is stored in this global variable, for
+        // later use by the Close method. Upon calling the Close method,
+        // this file path will be passed in a call to g_stream.SaveToFile
+        // method, in order to create the final file in the disk. Then
+        // the Close method calls g_stream.Close, to close the stream.
         var g_currentFilePath = "";
         
+        // The adTypeBinary constant, defined in the ADO enumeration
+        // named StreamTypeEnum.
         var adTypeBinary = 1;
         
-        function Init(seedPath) {
+        // The Init method, whose main task is to initialize
+        // and fill in the Byte Value Map (BVM), by loading
+        // a "seed file". The seed file is a special file that
+        // contains 256 consecutive bytes that store the
+        // values 0 to 255 respectively. It provides the data
+        // necessary to initialize the records of the BVM.
+        // When the Init method reads data from the seed file,
+        // it adds a record to the BVM per each byte within
+        // the seed; the record has its key set to the offset
+        // of the byte and its item set to a safearray containing
+        // the value of the byte. Since the offset of the byte
+        // and the value of the byte are the same numbers,
+        // the BVM can be later used during a write operation
+        // to convert a byte value into a safearray that is
+        // accepted by the methods of the g_stream object.
+        // The Init method must be called right after the
+        // library has been instantiated, and before any other
+        // methods of the library are called. 
+        function Init(seedPath, seedOffset) {
+            // The seedPath is an optional parameter. If not specified,
+            // it defaults to "mobstream-seed", which is the name of
+            // the seed file that is already shipped with the library.
+            // Users can leave this parameter blank only if the
+            // mobstream-seed file is located in the current directory
+            // associated with the process.
             if (!seedPath)
                 seedPath = "mobstream-seed";
             
             if (g_byteValueMap.Count)
                 throw new Error("MOBStream.Init: The library has already been initialized");
             
+            // Create an ADODB.Stream object for reading the seed file.
+            // Then initialize it and load the seed file with the given seedPath.
             var seedStream = new ActiveXObject("ADODB.Stream");
             seedStream.Open();
             seedStream.Type = adTypeBinary;
             seedStream.LoadFromFile(seedPath);
             
+            // The seedOffset is an optional parameter, which must be
+            // specified only if the actual seed data is preceded by
+            // a chunk of other data. In this case, a set of bytes
+            // will be skipped in the seedStream to reach the actual
+            // seed data. This allows arbitrary data to occur in the
+            // seed file both before and after the seed data.
+            if (seedOffset)
+                seedStream.Read(seedOffset);
+            
+            // Read 256 bytes of data from the seed file and fill in the BVM.
             for (var b = 0; b < 256; b++)
                 g_byteValueMap(b) = seedStream.Read(1);
             
+            // Finally, close the seedStream to free system resources.
             seedStream.Close();
         }
         
+        // The Open method, which is used to open the object
+        // in order to create a new binary file. Please note
+        // that the given filePath must not represent the
+        // path of an existing file. After calling the Open
+        // method, the user can call the Write method one or
+        // more times to write the desired data into the file.
+        // Finally, the user must call the Close method to
+        // close the object.
         function Open(filePath) {
             if (!filePath)
                 throw new Error("MOBStream.Open: Not enough arguments");
@@ -66,6 +134,11 @@
             g_currentFilePath = filePath;
         }
         
+        // The Write method, used to write any desired
+        // binary data into the file. The data is passsd as
+        // an enumerable object (e.g a JScript-based Array)
+        // whose elements contain the bytes of the data as
+        // unsigned 8-bit integers.
         function Write(data) {
             if (!data)
                 throw new Error("MOBStream.Write: Not enough arguments");
@@ -77,6 +150,10 @@
                 g_stream.Write(g_byteValueMap(e.item()));
         }
         
+        // The Close method, used to close the object in order
+        // to free the system resources associated with the
+        // object. Any call to the Open method must be followed
+        // by a call to the Close method.
         function Close() {
             if (!g_currentFilePath)
                 throw new Error("MOBStream.Close: There is currently no open file to close");
