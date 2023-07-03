@@ -24,7 +24,33 @@
         <property name="Size" get />
         <property name="Info" get dispid="0" />
         <property name="Version" get />
+        
+        <method name="ZipInit">
+            <parameter name="supplyShell" />
+            <parameter name="supplyFSO" />
+            <parameter name="supplyWmiServices" />
+        </method>
+        <method name="ZipOpen">
+            <parameter name="zipFilePath" />
+        </method>
+        <method name="ZipAdd">
+            <parameter name="zipItem" />
+            <parameter name="shellFlags" />
+            <parameter name="flags" />
+        </method>
+        <method name="ZipPoll">
+            <parameter name="timeout" />
+        </method>
+        <method name="ZipClose" />
     </public>
+    
+    <resource id="sleeperWQL">
+        <![CDATA[
+        SELECT * FROM __InstanceModificationEvent
+        WHERE
+            TargetInstance ISA "Win32_LocalTime"
+        ]]>
+    </resource>
     
     <script language="jscript">
         <![CDATA[
@@ -174,6 +200,87 @@
         
         function get_Version() {
             return "1.0";
+        }
+        
+        function ZipInit(supplyShell, supplyFSO, supplyWmiServices) {
+            g_shell = (supplyShell === -1) ? new ActiveXObject("Shell.Application") : supplyShell;
+            g_fso = (supplyFSO === -1) ? new ActiveXObject("Scripting.FileSystemObject") : supplyFSO;
+            g_services = (supplyWmiServices === -1) ? GetObject("winmgmts:") : supplyWmiServices;
+            
+            g_zipFilePath = "";
+            g_zipFolder = null;
+            g_zipFile = null;
+            g_eocd = [ 0x50, 0x4B, 0x05, 0x06 ];
+            for (var i = 0; i < 18; i++)
+                g_eocd.push(0);
+            
+            ZAF_DELETE_AFTER_ARCHIVING = 1;
+            ForAppending = 8;
+        }
+        
+        function ZipOpen(zipFilePath) {
+            if ((!!g_fso) && (!g_fso.FileExists(zipFilePath))) {
+                Open(zipFilePath);
+                Write(g_eocd);
+                Close();
+            }
+            
+            if (g_shell)
+                g_zipFolder = g_shell.NameSpace(zipFilePath);
+            if (g_fso)
+                g_zipFile = g_fso.GetFile(zipFilePath);
+            
+            g_zipFilePath = zipFilePath;
+        }
+        
+        function ZipAdd(zipItem, shellFlags, flags) {
+            if (!shellFlags)
+                shellFlags = 0;
+            
+            if (!flags)
+                flags = 0;
+            
+            if (flags & ZAF_DELETE_AFTER_ARCHIVING)
+                g_zipFolder.MoveHere(zipItem, shellFlags);
+            else
+                g_zipFolder.CopyHere(zipItem, shellFlags);
+        }
+        
+        function ZipCheck() {
+            try {
+                g_zipFile.OpenAsTextStream(ForAppending).Close();
+                return true;
+            }
+            catch (err) {
+                if (err.number == -2146828218)
+                    return false;
+                
+                throw err;
+            }
+        }
+        
+        function ZipPoll(timeout) {
+            if (!timeout)
+                return ZipCheck();
+            
+            var sleeper = g_services.ExecNotificationQuery(getResource("sleeperWQL"));
+            var period = 0;
+            
+            do {
+                sleeper.NextEvent();
+                
+                if (ZipCheck())
+                    return true;
+                
+                period += 1000;
+            } while (period < timeout);
+            
+            return false;
+        }
+        
+        function ZipClose() {
+            g_zipFile = g_zipFolder = null;
+            g_zipFilePath = "";
         }
         ]]>
     </script>
